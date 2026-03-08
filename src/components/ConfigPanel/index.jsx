@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect, useRef } from 'react';
+import React, { useMemo, useState, useEffect, useRef, useCallback } from 'react';
 import GeneralInfoTab from './GeneralInfoTab';
 import ModulesTab from './ModulesTab';
 import ColorsTab from './ColorsTab';
@@ -225,36 +225,77 @@ const DesktopPanel = ({ props, state }) => {
 };
 
 // ─── MOBILE bottom sheet ──────────────────────────────────────────────────────
-const MobileBottomSheet = ({ props, state }) => {
+const MobileBottomSheet = ({ props, state, onMobileViewRequest }) => {
   const {
     activeTab, visitedTabs, ctaStatus, allTabsVisited,
     progress, activeTabIndex, handleTabClick, getTabStatus, handleSendInquiry
   } = state;
 
-  // peek=zwinięty, half=połowa, full=pełny
   const [sheetState, setSheetState] = useState('peek');
-  const startY = useRef(null);
+  const [dragH, setDragH]           = useState(null); // live drag px height, null = snap mode
+  const startY   = useRef(null);
+  const startH   = useRef(null);
+  const sheetRef = useRef(null);
 
   const CurrentTabComponent = tabComponents[activeTab];
 
-  const heightMap = { peek: '100px', half: '55vh', full: '92vh' };
+  const resolvedH = (s) => {
+    if (s === 'peek') return 100;
+    const vh = window.innerHeight;
+    return s === 'half' ? Math.round(vh * 0.55) : Math.round(vh * 0.92);
+  };
 
   const cycleUp   = () => setSheetState(s => s === 'peek' ? 'half' : 'full');
   const cycleDown = () => setSheetState(s => s === 'full' ? 'half' : 'peek');
 
-  const onTouchStart = (e) => { startY.current = e.touches[0].clientY; };
-  const onTouchEnd   = (e) => {
+  // ── live drag ────────────────────────────────────────────────────────────────
+  const onTouchStart = useCallback((e) => {
+    startY.current = e.touches[0].clientY;
+    startH.current = sheetRef.current?.offsetHeight ?? resolvedH(sheetState);
+  }, [sheetState]);
+
+  const onTouchMove = useCallback((e) => {
+    if (startY.current === null) return;
+    e.preventDefault(); // blokuje scroll strony podczas ciągnięcia
+    const delta = startY.current - e.touches[0].clientY;
+    const newH  = Math.max(60, Math.min(window.innerHeight * 0.97, startH.current + delta));
+    setDragH(newH);
+  }, []);
+
+  const onTouchEnd = useCallback((e) => {
     if (startY.current === null) return;
     const delta = startY.current - e.changedTouches[0].clientY;
-    if (delta > 40) cycleUp();
-    else if (delta < -40) cycleDown();
-    startY.current = null;
-  };
+    const vh    = window.innerHeight;
+    const curH  = dragH ?? startH.current ?? resolvedH(sheetState);
 
+    // snap do najbliższego stanu
+    let next;
+    if      (curH < vh * 0.30) next = 'peek';
+    else if (curH < vh * 0.74) next = 'half';
+    else                       next = 'full';
+
+    // flick (szybkie > 60px) override — kierunek ważniejszy niż pozycja
+    if      (delta >  60) next = sheetState === 'peek' ? 'half' : 'full';
+    else if (delta < -60) next = sheetState === 'full' ? 'half' : 'peek';
+
+    setSheetState(next);
+    setDragH(null);
+    startY.current = null;
+  }, [dragH, sheetState]);
+
+  // ── tab click ─────────────────────────────────────────────────────────────────
   const onTabClick = (tab) => {
     handleTabClick(tab);
     if (sheetState === 'peek') setSheetState('half');
+    // reset kamery gdy user wchodzi do zakładki z modułami
+    if (tab === 'Funkcja' && onMobileViewRequest) onMobileViewRequest();
   };
+
+  // ── dynamiczna wysokość ───────────────────────────────────────────────────────
+  const sheetHeight     = dragH !== null ? `${dragH}px`
+    : sheetState === 'peek' ? '100px'
+    : sheetState === 'half' ? '55vh' : '92vh';
+  const sheetTransition = dragH !== null ? 'none' : 'height 0.38s cubic-bezier(0.32,0.72,0,1)';
 
   return (
     <>
@@ -271,28 +312,31 @@ const MobileBottomSheet = ({ props, state }) => {
       />
 
       <div
+        ref={sheetRef}
         style={{
           position: 'fixed',
           bottom: 0, left: 0, right: 0,
-          height: heightMap[sheetState],
+          height: sheetHeight,
           background: '#FDFCFB',
           borderRadius: '22px 22px 0 0',
           boxShadow: '0 -4px 30px rgba(0,0,0,0.13)',
           zIndex: 100,
           display: 'flex',
           flexDirection: 'column',
-          transition: 'height 0.38s cubic-bezier(0.32,0.72,0,1)',
+          transition: sheetTransition,
           overflow: 'hidden',
         }}
       >
-        {/* drag handle */}
+        {/* drag handle — obsługuje cały touch gestur */}
         <div
           onTouchStart={onTouchStart}
+          onTouchMove={onTouchMove}
           onTouchEnd={onTouchEnd}
           onClick={sheetState === 'peek' ? cycleUp : undefined}
           style={{
             padding: '10px 0 2px', display: 'flex',
-            justifyContent: 'center', flexShrink: 0, cursor: 'grab'
+            justifyContent: 'center', flexShrink: 0, cursor: 'grab',
+            touchAction: 'none', // niezbędne żeby onTouchMove działało bez scrollowania
           }}
         >
           <div style={{ width: 36, height: 4, background: '#D0C8C0', borderRadius: 2 }} />
@@ -453,7 +497,7 @@ const ConfigPanel = (props) => {
   }, []);
 
   return isMobile
-    ? <MobileBottomSheet props={props} state={state} />
+    ? <MobileBottomSheet props={props} state={state} onMobileViewRequest={props.onMobileViewRequest} />
     : <DesktopPanel props={props} state={state} />;
 };
 

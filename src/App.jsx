@@ -54,6 +54,10 @@ function App() {
   const [blendaCollisionLeft, setBlendaCollisionLeft] = useState(false);
   const [blendaCollisionRight, setBlendaCollisionRight] = useState(false);
 
+  // ── reset kamery na mobile (token inkrementowany → CameraController reaguje) ─
+  const [cameraResetToken, setCameraResetToken] = useState(0);
+  const handleMobileViewRequest = () => setCameraResetToken(t => t + 1);
+
   const firstIs30L = modules.length > 0 && modules[0]?.id === 'mod30L';
   const lastIs30P  = modules.length > 0 && modules[modules.length - 1]?.id === 'mod30P';
   const benchBlendaLeft  = firstIs30L ? BENCH_BLENDA_THICKNESS : 0;
@@ -173,6 +177,7 @@ function App() {
           handleHeightMm={handleHeightMm}
           benchDrawerEdgeLength={benchDrawerEdgeLength}
           benchDrawerBarLength={benchDrawerBarLength}
+          cameraResetToken={cameraResetToken}
         />
       </div>
       <div className="config-panel-area">
@@ -210,6 +215,7 @@ function App() {
           orderNotes={orderNotes} setOrderNotes={setOrderNotes}
           otherNotes={otherNotes} setOtherNotes={setOtherNotes}
           blendaCollisionLeft={blendaCollisionLeft} blendaCollisionRight={blendaCollisionRight}
+          onMobileViewRequest={handleMobileViewRequest}
         />
       </div>
     </div>

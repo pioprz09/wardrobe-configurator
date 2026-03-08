@@ -1,20 +1,82 @@
-import React, { Suspense } from 'react';
-import { Canvas } from '@react-three/fiber';
+import React, { Suspense, useEffect, useRef } from 'react';
+import { Canvas, useThree } from '@react-three/fiber';
 import { OrbitControls, Environment } from '@react-three/drei';
 import * as THREE from 'three';
 import Wardrobe from './3D/Wardrobe';
 import TechnicalDrawing2D from './2D/TechnicalDrawing2D';
 
+// ─────────────────────────────────────────────────────────────────────────────
+// CameraController — musi być wewnątrz <Canvas> żeby mieć dostęp do useThree.
+// Przy każdej zmianie wymiarów szafy oraz na żądanie z zewnątrz (cameraResetToken)
+// ustawia kamerę tak żeby cała szafa mieściła się w kadrze.
+// ─────────────────────────────────────────────────────────────────────────────
+const CameraController = ({ width, height, depth, minZoom, maxZoom, cameraResetToken }) => {
+  const { camera, gl } = useThree();
+  const controlsRef    = useRef();
+
+  const resetToFront = () => {
+    const fovRad = (45 * Math.PI) / 180;
+    const aspect = gl.domElement.clientWidth / Math.max(gl.domElement.clientHeight, 1);
+    // dystans żeby cała szerokość i wysokość szafy mieściła się w kadrze + 25% zapas
+    const dW = (width  / 2) / Math.tan(fovRad / 2) / Math.min(aspect, 1);
+    const dH = (height / 2) / Math.tan(fovRad / 2);
+    const d  = Math.max(dW, dH) * 1.25;
+
+    camera.position.set(d * 0.35, height * 0.55, d);
+    camera.lookAt(0, height / 2, 0);
+    camera.updateProjectionMatrix();
+
+    if (controlsRef.current) {
+      controlsRef.current.target.set(0, height / 2, 0);
+      controlsRef.current.update();
+    }
+  };
+
+  // reset przy zmianie wymiarów szafy
+  useEffect(() => {
+    resetToFront();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [width, height, depth]);
+
+  // reset na żądanie z zewnątrz (np. mobile → zakładka Funkcja)
+  useEffect(() => {
+    if (cameraResetToken > 0) resetToFront();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cameraResetToken]);
+
+  return (
+    <OrbitControls
+      ref={controlsRef}
+      minAzimuthAngle={-Math.PI / 2.2}
+      maxAzimuthAngle={Math.PI / 2.2}
+      minPolarAngle={Math.PI / 6}
+      maxPolarAngle={Math.PI / 1.8}
+      minDistance={minZoom}
+      maxDistance={maxZoom}
+      target={[0, height / 2, 0]}
+      enablePan={true}
+      panSpeed={0.5}
+      enableDamping={true}
+      dampingFactor={0.05}
+      rotateSpeed={0.5}
+      zoomSpeed={0.8}
+    />
+  );
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
 const WardrobeViewer = ({
   width, height, depth,
   baseModuleHeight,
   interiorColor, exteriorColor,
   blenda, blendaWidth,
 
-  // ✅ blendy
+  // blendy
   sideBlendaLeft,
   sideBlendaRight,
   topBlenda,
+  benchBlendaLeft,
+  benchBlendaRight,
 
   modules,
   isViewOpen,
@@ -30,8 +92,14 @@ const WardrobeViewer = ({
 
   edgeHandleLength,
   barHandleLength,
+  drawerHandleLength,
+  handleColor,
+  handleHeightMm,
+  benchDrawerEdgeLength,
+  benchDrawerBarLength,
 
-  handleColor
+  // nowe: token do resetu kamery (inkrementowany z zewnątrz)
+  cameraResetToken = 0,
 }) => {
   if (!width || !height || !depth || width <= 0 || height <= 0 || depth <= 0) {
     return (
@@ -101,16 +169,11 @@ const WardrobeViewer = ({
               height={height}
               depth={depth}
               modules={modules}
-
-              // legacy:
               blenda={blenda}
               blendaWidth={blendaWidth}
-
-              // ✅ nowe:
               sideBlendaLeft={sideBlendaLeft}
               sideBlendaRight={sideBlendaRight}
               topBlenda={topBlenda}
-
               activeModuleIndex={activeModuleIndex}
               onModuleClick={onModuleClick}
             />
@@ -120,6 +183,7 @@ const WardrobeViewer = ({
         <Canvas
           shadows
           camera={{
+            // pozycja startowa — CameraController nadpisze ją przy mount
             position: [cameraDistance * 0.5, height * 0.6, cameraDistance],
             fov: 45,
             far: 25000,
@@ -166,20 +230,14 @@ const WardrobeViewer = ({
 
             <Environment preset="apartment" background={false} />
 
-            <OrbitControls
-              minAzimuthAngle={-Math.PI / 2.2}
-              maxAzimuthAngle={Math.PI / 2.2}
-              minPolarAngle={Math.PI / 6}
-              maxPolarAngle={Math.PI / 1.8}
-              minDistance={minZoom}
-              maxDistance={maxZoom}
-              target={[0, height / 2, 0]}
-              enablePan={true}
-              panSpeed={0.5}
-              enableDamping={true}
-              dampingFactor={0.05}
-              rotateSpeed={0.5}
-              zoomSpeed={0.8}
+            {/* ← zastępuje statyczny <OrbitControls> */}
+            <CameraController
+              width={width}
+              height={height}
+              depth={depth}
+              minZoom={minZoom}
+              maxZoom={maxZoom}
+              cameraResetToken={cameraResetToken}
             />
 
             <group position={[0, 0, -depth / 2 - 20]}>
@@ -190,16 +248,13 @@ const WardrobeViewer = ({
                 baseModuleHeight={baseModuleHeight}
                 interiorColor={interiorColor}
                 exteriorColor={exteriorColor}
-
-                // legacy:
                 blenda={blenda}
                 blendaWidth={blendaWidth}
-
-                // ✅ nowe:
                 sideBlendaLeft={sideBlendaLeft}
                 sideBlendaRight={sideBlendaRight}
                 topBlenda={topBlenda}
-
+                benchBlendaLeft={benchBlendaLeft}
+                benchBlendaRight={benchBlendaRight}
                 modules={modules}
                 isViewOpen={isViewOpen}
                 activeModuleIndex={activeModuleIndex}
@@ -210,7 +265,11 @@ const WardrobeViewer = ({
                 viewMode={viewMode}
                 edgeHandleLength={edgeHandleLength}
                 barHandleLength={barHandleLength}
+                drawerHandleLength={drawerHandleLength}
                 handleColor={handleColor}
+                handleHeightMm={handleHeightMm}
+                benchDrawerEdgeLength={benchDrawerEdgeLength}
+                benchDrawerBarLength={benchDrawerBarLength}
               />
             </group>
 
