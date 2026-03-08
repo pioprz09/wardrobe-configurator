@@ -17,12 +17,19 @@ const CameraController = ({ width, height, depth, minZoom, maxZoom, cameraResetT
   const resetToFront = () => {
     const fovRad = (45 * Math.PI) / 180;
     const aspect = gl.domElement.clientWidth / Math.max(gl.domElement.clientHeight, 1);
-    // dystans żeby cała szerokość i wysokość szafy mieściła się w kadrze + 25% zapas
-    const dW = (width  / 2) / Math.tan(fovRad / 2) / Math.min(aspect, 1);
-    const dH = (height / 2) / Math.tan(fovRad / 2);
-    const d  = Math.max(dW, dH) * 1.25;
 
-    camera.position.set(d * 0.35, height * 0.55, d);
+    // Poprawne formuły perspektywy:
+    // fov w Three.js to kąt pionowy — poziomy = 2*atan(aspect*tan(fov/2))
+    // dystans potrzebny żeby zmieścić wysokość:  d = (H/2) / tan(fovV/2)
+    // dystans potrzebny żeby zmieścić szerokość: d = (W/2) / (aspect * tan(fovV/2))
+    const tanHalfFov = Math.tan(fovRad / 2);
+    const dH = (height / 2) / tanHalfFov;
+    const dW = (width  / 2) / (aspect * tanHalfFov);
+    // bierzemy większy + 30% zapas (szeroka szafa na wąskim ekranie mobilnym)
+    const d  = Math.max(dW, dH) * 1.35;
+
+    // kamera prosto z przodu, lekko powyżej środka — bez bocznego offsetu
+    camera.position.set(0, height * 0.5, d + depth / 2);
     camera.lookAt(0, height / 2, 0);
     camera.updateProjectionMatrix();
 
@@ -110,9 +117,9 @@ const WardrobeViewer = ({
     );
   }
 
-  const cameraDistance = Math.max(height * 1.2, width * 0.8, 2000);
-  const minZoom = cameraDistance * 0.6;
-  const maxZoom = cameraDistance * 2.0;
+  const cameraDistance = Math.max(height * 1.2, width * 1.2, 2000);
+  const minZoom = cameraDistance * 0.3;
+  const maxZoom = cameraDistance * 4.0;
 
   return (
     <>
