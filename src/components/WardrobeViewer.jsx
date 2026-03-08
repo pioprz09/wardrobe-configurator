@@ -14,38 +14,47 @@ const CameraController = ({ width, height, depth, minZoom, maxZoom, cameraResetT
   const { camera, gl } = useThree();
   const controlsRef    = useRef();
 
-  const resetToFront = () => {
-    const fovRad = (45 * Math.PI) / 180;
-    const aspect = gl.domElement.clientWidth / Math.max(gl.domElement.clientHeight, 1);
-
-    // Poprawne formuły perspektywy:
-    // fov w Three.js to kąt pionowy — poziomy = 2*atan(aspect*tan(fov/2))
-    // dystans potrzebny żeby zmieścić wysokość:  d = (H/2) / tan(fovV/2)
-    // dystans potrzebny żeby zmieścić szerokość: d = (W/2) / (aspect * tan(fovV/2))
+  const calcDistance = () => {
+    const fovRad    = (45 * Math.PI) / 180;
+    const aspect    = gl.domElement.clientWidth / Math.max(gl.domElement.clientHeight, 1);
     const tanHalfFov = Math.tan(fovRad / 2);
     const dH = (height / 2) / tanHalfFov;
     const dW = (width  / 2) / (aspect * tanHalfFov);
-    // bierzemy większy + 30% zapas (szeroka szafa na wąskim ekranie mobilnym)
-    const d  = Math.max(dW, dH) * 1.35;
+    // minimalna odległość żeby cała szafa mieściła się w kadrze + 20% zapas
+    return Math.max(dW, dH) * 1.2;
+  };
 
-    // kamera prosto z przodu, lekko powyżej środka — bez bocznego offsetu
-    camera.position.set(0, height * 0.5, d + depth / 2);
+  const resetToFront = () => {
+    const d = calcDistance();
+    // idealnie na wprost — kąt prosty do frontu, cała szerokość widoczna
+    camera.position.set(0, height / 2, d + depth / 2);
     camera.lookAt(0, height / 2, 0);
     camera.updateProjectionMatrix();
-
     if (controlsRef.current) {
       controlsRef.current.target.set(0, height / 2, 0);
       controlsRef.current.update();
     }
   };
 
-  // reset przy zmianie wymiarów szafy
+  const resetToDefault = () => {
+    const d = calcDistance();
+    // domyślny widok — 2× dalej, lekki kąt żeby szafa wyglądała 3D
+    camera.position.set(d * 0.4, height * 0.55, (d + depth / 2) * 2);
+    camera.lookAt(0, height / 2, 0);
+    camera.updateProjectionMatrix();
+    if (controlsRef.current) {
+      controlsRef.current.target.set(0, height / 2, 0);
+      controlsRef.current.update();
+    }
+  };
+
+  // domyślny widok przy zmianie wymiarów
   useEffect(() => {
-    resetToFront();
+    resetToDefault();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [width, height, depth]);
 
-  // reset na żądanie z zewnątrz (np. mobile → zakładka Funkcja)
+  // widok na wprost na żądanie z zewnątrz (zakładka Funkcja na mobile)
   useEffect(() => {
     if (cameraResetToken > 0) resetToFront();
   // eslint-disable-next-line react-hooks/exhaustive-deps
